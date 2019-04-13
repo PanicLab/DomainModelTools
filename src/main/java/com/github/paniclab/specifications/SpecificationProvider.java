@@ -1,6 +1,5 @@
 package com.github.paniclab.specifications;
 
-import com.github.paniclab.invariants.Invariant;
 import org.jetbrains.annotations.NotNull;
 
 import java.lang.reflect.Constructor;
@@ -8,9 +7,22 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Arrays;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 
 public class SpecificationProvider {
+    private static final ConcurrentMap<SpecId<?>, Specification<?>> SPEC_REGISTRY = new ConcurrentHashMap<>();
+
+    <U extends Specification<?>> void register(U spec) {
+        ConcurrentMap<SpecId<?>, Specification<?>> registry = SPEC_REGISTRY;
+        if(registry.containsKey(spec.id())) {
+            throw new SecurityException("Specification with id=" + spec.id() + " is already exists");
+        }
+
+        registry.put(spec.id(), spec);
+    }
+
     protected <U, R extends Specification<U>, B extends SpecificationBuilder<U, ? extends Specification<U>>> R getInstance(Class<R> specClass, B builder) {
         R spec = getBrandNewInstance(specClass);
 
@@ -80,8 +92,8 @@ public class SpecificationProvider {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    <U, R extends Specification<U>> Class<? extends R> getSpecType(Class<?> clazz) {
-        return (Class<? extends R>) clazz;
+    //@SuppressWarnings("unchecked")
+    <R extends Specification<?>> Class<R> getSpecType(Class<?> clazz) {
+        return (Class<R>) clazz;
     }
 }

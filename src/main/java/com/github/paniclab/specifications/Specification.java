@@ -2,19 +2,20 @@ package com.github.paniclab.specifications;
 
 import com.github.paniclab.invariants.Invariant;
 
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 
 public class Specification<T> {
+    private final SpecificationProvider provider = new SpecificationProvider();
+
     private final Class<T> subject;
     private final Class<? extends Specification<T>> specType;
     private final Function<T, Boolean> predicate;
     private final Invariant<T> invariant;
+    private final Map<SpecId<? extends T>, Invariant<T>> invariantsChain;
     private final CompareApproach compareApproach;
     private final SpecId<? extends T> specId;
 
@@ -22,9 +23,10 @@ public class Specification<T> {
 
     protected Specification(Class<T> subject, Function<T, Boolean> predicate) {
         this.subject = subject;
-        this.specType = new SpecificationProvider().getSpecType(this.getClass());
+        this.specType = provider.getSpecType(this.getClass());
         this.predicate = predicate;
         this.invariant = predicate::apply;
+        this.invariantsChain = Collections.emptyMap();
         this.compareApproach = CompareApproach.IDENTITY;
         this.specId = null;
     }
@@ -34,12 +36,15 @@ public class Specification<T> {
         this.specType = new SpecificationProvider().getSpecType(this.getClass());
         this.predicate = predicate;
         this.invariant = predicate::apply;
+        this.invariantsChain = Collections.emptyMap();
         this.specId = specId;
         if (this.specId != null) {
             this.compareApproach = CompareApproach.EQUALITY;
         } else {
             this.compareApproach = CompareApproach.IDENTITY;
         }
+
+        this.provider.register(this);
     }
 
 
@@ -61,8 +66,15 @@ public class Specification<T> {
     }
 
 
-    public static <U> Specification<U> as(Specification<U> spec, SpecId<U> specId) {
-        Specification<U> newSpec = new Specification<>(spec.subject(), spec.predicate, specId);
+    public static <U, R extends Specification<U>> R as(Specification<U> spec, SpecId<U> specId) {
+        SpecificationBuilder<U, R> builder = spec.builder();
+
+        R newSpec = builder.withSubject(spec.subject())
+                           .withInvariant(spec.invariant())
+                           .withSpecType(spec.specType())
+                           .withSpecId(specId)
+                           .build();
+
         return newSpec;
     }
 
@@ -107,8 +119,11 @@ public class Specification<T> {
 
 
 
-    protected SpecificationBuilder<T, Specification<T>> builder() {
-        return new SpecificationBuilder<>(subject, specType);
+/*    protected <U, R extends Specification<U>> SpecificationBuilder<U, R> builder() {
+        return new SpecificationBuilder<>((Class<U>)subject, (Class<R>) specType);
+    }*/
+    protected <R extends Specification<T>> SpecificationBuilder<T, R> builder() {
+        return new SpecificationBuilder<>(subject, (Class<R>)specType);
     }
 
     public <U extends T> boolean isSatisfiedBy(U instance) throws SpecificationException {
@@ -130,28 +145,40 @@ public class Specification<T> {
 
     @SuppressWarnings("unchecked")
     public <U extends Specification<T>, R extends Specification<T>> R and(U other) {
-        SpecificationProvider provider = new SpecificationProvider();
-
         Invariant<T> invariant = instance -> this.isSatisfiedBy(instance) && other.isSatisfiedBy(instance);
-        SpecificationBuilder<T, ?> builder = new SpecificationBuilder<>();
-        R resultSpec = (R)provider.getInstance(this.getClass(), builder);
+        SpecificationBuilder<T, R> builder = this.builder();
+        R resultSpec = builder.withSubject(subject())
+                              .withSpecType(specType())
+                              .withInvariant(invariant)
+                              .build();
 
         return resultSpec;
     }
 
-    public Specification<T> or(Specification<T> other) {
-        Specification<T> newSpec;
-        newSpec = new Specification<>(other.subject(),
-                                      instance -> this.isSatisfiedBy(instance) || other.isSatisfiedBy(instance));
+    public <U extends Specification<T>, R extends Specification<T>> R or(U other) {
+        R newSpec;
+        SpecificationBuilder<T, R> builder = this.builder();
+
+        newSpec = builder.withSubject(subject())
+                         .withSpecType(specType())
+                         .withInvariant(instance -> this.isSatisfiedBy(instance) || other.isSatisfiedBy(instance))
+                         .build();
+
         return newSpec;
     }
 
-    public Specification<T> not() {
+    public <R extends Specification<T>> R not() {
         Predicate<T> predicate = this::isSatisfiedBy;
 
-        return new Specification<>(this.subject,
-                instance -> predicate.negate().test(instance)
-        );
+        R newSpec;
+        SpecificationBuilder<T, R> builder = this.builder();
+
+        newSpec = builder.withSubject(subject())
+                         .withSpecType(specType())
+                         .withInvariant(instance -> predicate.negate().test(instance))
+                         .build();
+
+        return newSpec;
     }
 
     public Specification<T> withId(SpecId<T> id) {
@@ -169,6 +196,14 @@ public class Specification<T> {
 
     protected Invariant<T> invariant() {
         return invariant;
+    }
+
+    protected SpecificationProvider provider() {
+        return this.provider;
+    }
+
+    protected <U extends Specification<T>> Class<U> specType() {
+        return (Class<U>) this.specType;
     }
 
 

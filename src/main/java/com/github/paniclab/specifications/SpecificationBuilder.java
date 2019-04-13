@@ -18,7 +18,7 @@ public class SpecificationBuilder<T, R extends Specification<T>> {
 
     SpecificationBuilder() {}
 
-    public SpecificationBuilder(Class<T> subjectClass, Class<? extends R> specClass) {
+    public SpecificationBuilder(Class<T> subjectClass, Class<R> specClass) {
         subject = subjectClass;
         specType = specClass;
     }
