@@ -1,21 +1,14 @@
 package com.github.paniclab.spectator;
 
+import com.github.paniclab.invariants.Invariant;
 import com.github.paniclab.specifications.Specification;
 
-import java.util.function.BiPredicate;
-import java.util.function.Function;
 import java.util.function.Predicate;
 
 
 public interface Spectator {
-    default <U> boolean is(U something) {
-        return something instanceof Spectator;
-    }
-    default <U> boolean has(U something) {
-        return false;
-    }
-    default boolean can(Predicate<Spectator> predicate) {
-        return predicate.test(this);
+    default boolean satisfy(Invariant<Spectator> predicate) {
+        return predicate.check(this);
     }
 
     default boolean satisfy(Predicate<Spectator> predicate) {
@@ -23,14 +16,22 @@ public interface Spectator {
     }
 
     default <U> boolean satisfy(Specification<U> spec) {
-        return spec.isSatisfiedBy(this.unwrap(spec.subject()));
+        U subject;
+
+        try {
+            subject = this.unwrap(spec.subject());
+        } catch (ClassCastException | UnsupportedOperationException e) {
+            return false;
+        }
+
+        return spec.isSatisfiedBy(subject);
     }
 
-    default <U> U unwrap(Class<? extends U> clazz) {
+    default <U> U unwrap(Class<? extends U> clazz) throws UnsupportedOperationException {
         if(Spectator.class.isAssignableFrom(clazz)) {
             return clazz.cast(this);
         }
 
-        throw new UnsupportedOperationException("Operation is not supported.");
+        throw new UnsupportedOperationException("Operation is not supported for this type: " + clazz);
     }
 }
